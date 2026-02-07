@@ -1,10 +1,12 @@
-import "./App.css";
-import { getRandomWord } from "./utils";
 import { useEffect, useState } from "react";
+import { getRandomWord } from "./utils";
+import { fetchWordImage } from "./utils";
 import Input from "./Components/Input";
 import GuessedLetters from "./Components/GuessedLetters";
 import WordDisplay from "./Components/WordDisplay";
 import Scoreboard from "./Components/Scoreboard";
+import { Container, Typography, Box } from "@mui/material";
+import "./App.css";
 
 function App() {
   // currWord is the current secret word for this round. Update this with the updater function after each round.
@@ -17,6 +19,25 @@ function App() {
   const [gameState, setGameState] = useState("");
   const [wins, setWins] = useState(0);
   const [round, setRound] = useState(1);
+  const [wordImage, setWordImage] = useState("");
+  const [isError, setIsError] = useState(false); // Controls the shake animation
+
+  // Fetch image when word changes using newly learned async await
+  useEffect(() => {
+    const getImage = async () => {
+      const url = await fetchWordImage(currWord);
+      setWordImage(url);
+    };
+    getImage();
+  }, [currWord]);
+
+  //Function is used to handle wrong game states and shake animation
+  const triggerError = (message) => {
+    setGameState(message);
+    setIsError(true);
+    //Remove the error class after animation finishes
+    setTimeout(() => setIsError(false), 300);
+  };
 
   const handleSubmit = (event) => {
     event.preventDefault();
@@ -24,33 +45,31 @@ function App() {
     if (!inputValue) return; // Don't allow empty submissions
 
     if (guessedLetters.includes(inputValue)) {
-      setGameState("Letter already guessed");
+      triggerError("Letter already guessed!");
       return;
     } else {
       setGuessedLetters((prev) => [...prev, inputValue]);
     }
 
-    //consider placing in useEffect hook
     if (currWord.includes(inputValue)) {
-      setGameState("Correct Letter Guessed");
+      setGameState("Correct! 🎉");
     } else {
-      setGameState("Wrong Letter Guessed");
+      triggerError("Wrong guess! ❌");
       setGuessTries((prev) => prev - 1);
     }
 
     setInputValue("");
   };
 
-  //Check that the length of the input is 1, if not reject
   const handleChange = (event) => {
-    const value = event.target.value;
+    const value = event.target.value.toLowerCase();
     const letterRegex = /^[a-z]*$/;
 
-    if (gameEnded) return; // Don't allow guesses if the game is over!
+    if (gameEnded) return; // Don't allow guesses if the game is over
 
     //Check if the input is too long
     if (value.length > 1) {
-      setGameState("Input 1 letter at a time");
+      triggerError("One letter at a time!");
       return;
     }
 
@@ -59,7 +78,7 @@ function App() {
       setInputValue(value);
       setGameState("");
     } else {
-      setGameState("Input a valid letter (a-z)"); // It's a number or symbol!
+      triggerError("Letters only (A-Z)"); // It's a number or symbol
     }
   };
 
@@ -69,20 +88,22 @@ function App() {
       .split("")
       .every((letter) => guessedLetters.includes(letter));
 
-    if (isWin && guessedLetters.length > 0) {
+    if (isWin && !gameEnded) {
+      //instead of checking guessed letters length, check game ended status
       setGameEnded(true);
-      setGameState(`Congrats, you guessed the word ${currWord}`);
+      setGameState(`🎉 YOU WON! The word was ${currWord.toUpperCase()}`);
       setWins((prev) => prev + 1);
     }
-  }, [guessedLetters, currWord]);
+  }, [guessedLetters, currWord, gameEnded]); //Added game ended to dependencies
 
   // Effect to check for LOSS
   useEffect(() => {
-    if (guessTries <= 0) {
+    if (guessTries <= 0 && !gameEnded) {
+      //Same thing here, check game ended status too
       setGameEnded(true);
-      setGameState(`Game Over! The word was ${currWord}`);
+      setGameState(`💀 Game Over! The word was ${currWord.toUpperCase()}`);
     }
-  }, [guessTries, currWord]);
+  }, [guessTries, currWord, gameEnded]);
 
   //Reset
   const playAgain = () => {
@@ -94,12 +115,31 @@ function App() {
     setGuessTries(newWord.length + 5);
     setGameState("");
     setRound((prev) => prev + 1);
+    setWordImage(""); //Clear the image
   };
 
   return (
-    <>
-      <div className="card">
-        <h1>Guess The Word 🚀</h1>
+    <Container maxWidth="sm">
+      <Box className="neon-card">
+        <Typography
+          variant="h4"
+          gutterBottom
+          sx={{
+            fontWeight: "bold",
+            color: "#fff",
+            letterSpacing: 3,
+            textShadow: "0 0 10px #fff",
+          }}
+        >
+          Guess The Word
+        </Typography>
+
+        {/* Image Display */}
+        <Box className="image-container">
+          {wordImage && (
+            <img src={wordImage} alt="Clue" className="word-image" />
+          )}
+        </Box>
 
         <WordDisplay
           currWord={currWord}
@@ -107,25 +147,55 @@ function App() {
           gameEnded={gameEnded}
         />
 
-        <p>Tries remaining: {guessTries}</p>
+        <Box
+          sx={{
+            display: "flex",
+            justifyContent: "space-between",
+            px: 2,
+            alignItems: "center",
+          }}
+        >
+          <Typography variant="body1" sx={{ color: "#aaa" }}>
+            Attempts Left:{" "}
+            <span
+              style={{
+                color: guessTries < 3 ? "#ff003c" : "#fff",
+                fontWeight: "bold",
+                fontSize: "1.2em",
+              }}
+            >
+              {guessTries}
+            </span>
+          </Typography>
 
-        <h3>Game State</h3>
-        {gameState}
+          <Typography
+            sx={{
+              color: isError ? "#ff003c" : "#00f3ff",
+              fontWeight: "bold",
+              textShadow: "0 0 5px currentColor",
+            }}
+          >
+            {gameState}
+          </Typography>
+        </Box>
+
+        {/* Input wrapper handles the shake class */}
+        <Box className={isError ? "shake" : ""}>
+          <Input
+            inputValue={inputValue}
+            gameEnded={gameEnded}
+            handleSubmit={handleSubmit}
+            handleChange={handleChange}
+            playAgain={playAgain}
+            errorState={isError}
+          />
+        </Box>
 
         <GuessedLetters guessedLetters={guessedLetters} />
-        <br />
-        <h3>Input</h3>
-        <Input
-          inputValue={inputValue.toLowerCase()}
-          gameEnded={gameEnded}
-          handleSubmit={handleSubmit}
-          handleChange={handleChange}
-          playAgain={playAgain}
-        />
 
         <Scoreboard round={round} wins={wins} />
-      </div>
-    </>
+      </Box>
+    </Container>
   );
 }
 
